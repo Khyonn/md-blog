@@ -1,4 +1,4 @@
-const version = "0.0.3";
+const version = "0.0.4";
 const cache_name = `cache_${version}`;
 const staticsFiles = [".", "./pages/home.md", "./pages/notfound.md", "./pages/offline.md", "./assets/scripts/marked.min.js"];
 
@@ -6,7 +6,7 @@ importScripts("./assets/scripts/marked.min.js");
 
 self.addEventListener("install", (event) => {
   self.skipWaiting(); // service worker should install to replace older one
-  event.waitUntil(caches.open(cache_name).then(cache => cache.addAll(staticsFiles)));
+  event.waitUntil(caches.open(cache_name).then((cache) => cache.addAll(staticsFiles)));
 });
 
 self.addEventListener("activate", (event) => {
@@ -22,12 +22,9 @@ const markdownToPageResponse = async (markdownText) => {
 
   return typeof template !== "string"
     ? template
-    : new Response(
-        template
-          .replace(/(<title.*>)(.*)(<\/title>)/, `$1${content.match(/<h1(?:.*)>(.+)<\/h1>/)?.at(1) ?? "$2"}$3`)
-          .replace(/(<div id="__content__">)(?:.*)(<\/div>)/, `$1${content}$2`),
-        { headers: { "Content-type": "text/html", charset: "UTF-8" } }
-      );
+    : new Response(template.replace(/(<title.*>)(.*)(<\/title>)/, `$1${content.match(/<h1(?:.*)>(.+)<\/h1>/)?.at(1) ?? "$2"}$3`).replace(/(<div id="__content__">)(?:.*)(<\/div>)/, `$1${content}$2`), {
+        headers: { "Content-type": "text/html", charset: "UTF-8" },
+      });
 };
 
 /**
@@ -53,28 +50,23 @@ const getMarkdownPageResponse = async (requestedMarkdown) => {
     try {
       markdownResponse = (await fetchMarkdownAndPutInCache(markdownUrl)) ?? (await cache.match("./pages/notfound.md"));
     } catch (e) {
-      markdownResponse = await cache.match("./pages/offline.md")
+      markdownResponse = await cache.match("./pages/offline.md");
     }
   }
   if (!markdownResponse) {
-    return markdownResponse
+    return markdownResponse;
   }
   const markdownText = await markdownResponse.text();
-  const markdownPage = await markdownToPageResponse(markdownText)
+  const markdownPage = await markdownToPageResponse(markdownText);
   return markdownPage;
 };
 
 self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
-    const isHomePage = [
-      new URL(event.request.url).pathname,
-      new URL(event.request.url).pathname.slice(0, -1)
-    ].includes(self.location.pathname.replace("sw.js", ""));
+    const isHomePage = [new URL(event.request.url).pathname, new URL(event.request.url).pathname.slice(0, -1)].includes(self.location.pathname.replace("sw.js", ""));
     const requestedPage = new URLSearchParams(new URL(event.request.url).search).get("page") ?? "home";
     if (isHomePage && requestedPage) {
-        event.respondWith(
-          getMarkdownPageResponse(requestedPage).then(r => r ?? event.preloadResponse)
-        );
+      event.respondWith(getMarkdownPageResponse(requestedPage).then((r) => r ?? event.preloadResponse));
     }
   } else if (self.location.origin === new URL(event.request.url).origin) {
     event.respondWith(
