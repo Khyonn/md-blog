@@ -1,125 +1,82 @@
-const version = "0.0.1";
+const version = "0.0.2";
 const cache_name = `cache_${version}`;
-const staticsFiles = [
-  "./pages/home.md",
-  "./pages/notfound.md",
-  "./pages/offline.md",
-  "./scripts/marked.min.js",
-];
+const staticsFiles = [".", "./pages/home.md", "./pages/notfound.md", "./pages/offline.md", "./assets/scripts/marked.min.js"];
 
-importScripts("./scripts/marked.min.js");
+importScripts("./assets/scripts/marked.min.js");
 
 self.addEventListener("install", (event) => {
-  self.skipWaiting(); // rien à foutre, il s'installe meme s'il y a d'autres SW qui veulent s'enregistrer avant
-  event.waitUntil(
-    caches.open(cache_name).then((cache) => {
-      cache.addAll(staticsFiles).then(() =>
-        cache
-          .match("./pages/home.md")
-          .then((r) => r.text())
-          .then((content) => cache.put(new Request("."), getPageWithContent(marked.parse(content))))
-      );
-    })
-  );
+  self.skipWaiting(); // service worker should install to replace older one
+  event.waitUntil(caches.open(cache_name).then(cache => cache.addAll(staticsFiles)));
 });
 
 self.addEventListener("activate", (event) => {
   clients.claim();
   // clean old caches => new files
-  event.waitUntil(
-    caches
-      .keys()
-      .then((cacheKeys) =>
-        cacheKeys.map(
-          (cacheKey) => cacheKey !== cache_name && caches.delete(cacheKey)
-        )
-      )
-  );
+  event.waitUntil(caches.keys().then((cacheKeys) => cacheKeys.map((cacheKey) => cacheKey !== cache_name && caches.delete(cacheKey))));
 });
 
-const getPageWithContent = (content) => {
-  const response = new Response(
-    `
-    <!DOCTYPE html>
-    <html lang="fr">
-      <head>
-          <meta charset="UTF-8">
-          <meta http-equiv="X-UA-Compatible" content="IE=edge">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <link rel="manifest" href="manifest.json">
-          <title>${
-            content.match(/<h1(?:.*)>(.+)<\/h1>/)?.at(1) ?? "Khyonn's blog"
-          }</title>
-          <style>
-              *,
-              ::before,
-              ::after {
-                  box-sizing: border-box;
-              }
+const markdownToPageResponse = async (markdownText) => {
+  const content = marked.parse(markdownText);
+  const cache = await caches.open(cache_name);
+  const template = await cache.match(".").then((r) => r && r.text());
 
-              body {
-                  margin: 0;
-                  font-family: sans-serif;
-              }
-              
-          </style>
-          <script>
-              window.addEventListener("load", () => {
-                  navigator.serviceWorker?.register('./sw.js');
-              });
-          </script>
-      </head>
-      <body>
-        ${content}
-      </body>
-    </html>
-  `,
-    { headers: { "Content-type": "text/html" } }
-  );
-  response.type = "text/html";
-  return response;
+  return typeof template !== "string"
+    ? template
+    : new Response(
+        template
+          .replace(/(<title.*>)(.*)(<\/title>)/, `$1${content.match(/<h1(?:.*)>(.+)<\/h1>/)?.at(1) ?? "$2"}$3`)
+          .replace(/(<div id="__content__">)(?:.*)(<\/div>)/, `$1${content}$2`),
+        { headers: { "Content-type": "text/html", charset: "UTF-8" } }
+      );
+};
+
+/**
+ * @param {string} markdownUrl
+ */
+const fetchMarkdownAndPutInCache = async (markdownUrl) => {
+  const markdownResponse = await fetch(markdownUrl);
+  const cache = await caches.open(cache_name);
+  if (markdownResponse.ok) {
+    cache.put(markdownUrl, markdownResponse.clone());
+    return markdownResponse;
+  }
+};
+
+/**
+ * @param {string} requestedMarkdown
+ */
+const getMarkdownPageResponse = async (requestedMarkdown) => {
+  const markdownUrl = `./pages/${requestedMarkdown}.md`;
+  const cache = await caches.open(cache_name);
+  let markdownResponse = await cache.match(markdownUrl);
+  if (!markdownResponse) {
+    try {
+      markdownResponse = (await fetchMarkdownAndPutInCache(markdownUrl)) ?? (await cache.match("./pages/notfound.md"));
+    } catch (e) {
+      markdownResponse = await cache.match("./pages/offline.md")
+    }
+  }
+  if (!markdownResponse) {
+    return markdownResponse
+  }
+  const markdownText = await markdownResponse.text();
+  const markdownPage = await markdownToPageResponse(markdownText)
+  return markdownPage;
 };
 
 self.addEventListener("fetch", (event) => {
-  console.log("Fetching " + event.request.url);
   if (event.request.mode === "navigate") {
-    let requiredPage = new URLSearchParams(
-      event.request.url.split("?").at(1)?.split("#").at(0)
-    ).get("page");
-    if (event.request.url.startsWith(location.origin) && requiredPage) {
-      event.respondWith(
-        caches
-          .match(`./pages/${requiredPage}.md`)
-          .then((c) => {
-            if (!c) {
-              throw new Error("Not present in cache");
-            }
-            return c;
-          })
-          .catch(() =>
-            // si pas présent dans le cache, on le cherche
-            fetch(`./pages/${requiredPage}.md`)
-              .then((response) => {
-                if (!response.ok) {
-                  return caches.match("./pages/notfound.md"); // si pas ok => 404
-                }
-                return caches.open(cache_name).then((cache) => {
-                  cache.put(
-                    new Request(`./pages/${requiredPage}.md`),
-                    response.clone()
-                  );
-                  return response;
-                });
-              })
-          )
-          .catch(() => caches.match("./pages/offline.md")) // le fetch ne marche pas => offline
-          .then((c) => c.text())
-          .then((content) => getPageWithContent(marked.parse(content)))
-      );
-    } else {
-      event.respondWith(caches.match("."));
+    const isHomePage = [
+      new URL(event.request.url).pathname,
+      new URL(event.request.url).pathname.slice(0, -1)
+    ].includes(self.location.pathname.replace("sw.js", ""));
+    const requestedPage = new URLSearchParams(new URL(event.request.url).search).get("page") ?? "home";
+    if (isHomePage && requestedPage) {
+        event.respondWith(
+          getMarkdownPageResponse(requestedPage).then(r => r ?? event.preloadResponse)
+        );
     }
-  } else {
+  } else if (self.location.origin === new URL(event.request.url).origin) {
     event.respondWith(
       caches.match(event.request).then((r) => {
         return (

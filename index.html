@@ -1,33 +1,57 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="manifest.json">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="manifest.json" />
     <title>Khyonn's blog</title>
     <style>
-        *,
-        ::before,
-        ::after {
-            box-sizing: border-box;
-        }
+      *,
+      ::before,
+      ::after {
+        box-sizing: border-box;
+      }
 
-        body {
-            margin: 0;
-            font-family: sans-serif;
-        }
-        
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
     </style>
-    <script>
-        window.addEventListener("load", () => {
-            navigator.serviceWorker?.register('./sw.js').then(() => {
-                location.reload();
+  </head>
+  <body>
+    <noscript>You should enable Javascript ... :(</noscript>
+    <div id="__content__"></div>
+    <script>      
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js");
+      }
+      // load content if not present
+      if (!document.getElementById("__content__").innerText.trim().length) {
+        const markedScript = document.createElement("script");
+        markedScript.src = "./assets/scripts/marked.min.js";
+        markedScript.onload = () => {
+          fetch(`./pages/${new URLSearchParams(location.search).get("page") ?? "home"}.md`)
+            .catch(() => caches.match("./pages/offline.md"))
+            .then((response) => (response.ok ? response : caches.match("./pages/notfound.md")))
+            .then((response) => response && response.text())
+            .then((mdText) => {
+              const mdHtml = marked.parse(mdText);
+              const content = document.getElementById("__content__");
+              content.innerHTML = mdHtml;
+              document.title = mdHtml.match(/<h1(?:.*)>(.+)<\/h1>/)?.at(1) ?? document.title;
+              Array.from(content.querySelectorAll("script")).forEach((notWorkingScript) => {
+                const workingScript = document.createElement("script");
+                workingScript.text = notWorkingScript.innerHTML;
+                for (let attribute of notWorkingScript.attributes) {
+                  workingScript.setAttribute(attribute.name, attribute.value);
+                }
+                notWorkingScript.replaceWith(workingScript);
+              });
             });
-            
-        });
+        };
+        document.body.append(markedScript);
+      }
     </script>
-</head>
-<body>
-</body>
+  </body>
 </html>
