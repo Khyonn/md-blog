@@ -17,11 +17,57 @@
         margin: 0;
         font-family: sans-serif;
       }
+      header {
+        background-color: blueviolet;
+        color: white;
+        box-shadow: 0 5px 5px 0 rgb(0 0 0 / 0.2);
+      }
+      nav {
+        height: 4rem;
+        padding: .5rem;
+        display: flex;
+        align-items: center;
+      }
+      nav a {
+        color: currentColor;
+        text-decoration: none;
+      }
+      nav a:first-child + a {
+        margin-left: 2rem;
+      }
+      nav a + a {
+        margin-left: 1rem;
+      }
+      @media screen and (min-width: 650px) {
+        nav,
+        main {
+          margin-inline: 2rem;
+        }
+      }
+      @media screen and (min-width: 950px) {
+        nav,
+        main {
+          margin-inline: auto;
+          width: min(80%, 60rem);
+        }
+      }
+      #__content__ {
+        padding-inline: .2rem;
+      }
     </style>
   </head>
   <body>
-    <noscript>You should enable Javascript ... :(</noscript>
-    <div id="__content__"></div>
+    <header>
+      <nav>
+        <a href=".">Accueil</a>
+        <a href="?page=code">Code</a>
+        <a href="?page=ecologie">Ecologie</a>
+      </nav>
+    </header>
+    <main>
+      <noscript>You should enable Javascript ... :(</noscript>
+      <div id="__content__"></div>
+    </main>
     <script>      
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js");

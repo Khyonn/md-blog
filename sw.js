@@ -1,4 +1,4 @@
-const version = "0.0.2";
+const version = "0.0.3";
 const cache_name = `cache_${version}`;
 const staticsFiles = [".", "./pages/home.md", "./pages/notfound.md", "./pages/offline.md", "./assets/scripts/marked.min.js"];
 
